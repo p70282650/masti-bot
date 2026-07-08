@@ -44,7 +44,7 @@ def init_db():
                 auto_delete INTEGER DEFAULT 1
             )
         ''')
-        # 1b. 👤 बॉट यूज़र्स टेबल (प्राइवेट चैट ब्रॉडकास्ट के लिए नया जोड़ा गया)
+        # 1b. 👤 बॉट यूज़र्स टेबल (प्राइवेट चैट ब्रॉडकास्ट के लिए नया जोड़ा गया)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -52,12 +52,14 @@ def init_db():
                 join_time REAL
             )
         ''')
-        # 2. पोल से चैट आईडी मैप करने का टेबल
+        # 2. पोल से चैट आईडी मैप करने का टेबल - IMPROVED WITH VALIDITY CHECK
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS poll_mapping (
                 poll_id TEXT PRIMARY KEY,
                 chat_id INTEGER,
-                correct_id INTEGER
+                correct_id INTEGER,
+                created_at REAL,
+                is_active INTEGER DEFAULT 1
             )
         ''')
         # 3. 24 घंटे का दैनिक लीडरबोर्ड टेबल (अपडेटेड फॉर न्यू मार्किंग)
@@ -129,13 +131,15 @@ def global_poll_manager():
                                 type="quiz",
                                 correct_option_id=quiz["correct_id"],
                                 is_anonymous=True,
-                                explanation=explanation_text
+                                explanation=explanation_text,
+                                open_period=300  # 5 मिनट
                             )
                             new_poll_id = sent_message.message_id
                             poll_api_id = sent_message.poll.id
                             
-                            cursor.execute("INSERT INTO poll_mapping (poll_id, chat_id, correct_id) VALUES (?, ?, ?)", 
-                                           (poll_api_id, chat_id, quiz["correct_id"]))
+                            # ✅ Poll mapping को सही तरीके से store करें with is_active flag
+                            cursor.execute("INSERT OR REPLACE INTO poll_mapping (poll_id, chat_id, correct_id, created_at, is_active) VALUES (?, ?, ?, ?, 1)", 
+                                           (poll_api_id, chat_id, quiz["correct_id"], current_now))
 
                             new_index = (current_index + 1) % len(filtered_quiz)
                             cursor.execute('''
@@ -311,11 +315,11 @@ def set_global_leaderboard_time(message):
             cursor = conn.cursor()
             cursor.execute("UPDATE bot_settings SET value = ? WHERE key = 'leaderboard_time'", (time_str,))
             conn.commit()
-        bot.send_message(message.chat.id, f"✅ **मालिक, टाइम बदल दिया गया है!**\nअब से दैनिक रिज़ल्ट ठीक **{time_str}** बजे ऑटो-सेंड होगा।", parse_mode="Markdown")
+        bot.send_message(message.chat.id, f"✅ **मालिक, टाइम बदल दिया गया है!**\nअब से दैनिक रिज़ल्ट ठीक **{time_str}** पर भेजा जाएगा।", parse_mode="Markdown")
     except ValueError:
-        bot.send_message(message.chat.id, "❌ **अमान्य समय फॉर्मेट!**\nकृपया 24-घंटे का फॉर्मेट उपयोग करें (जैसे: 13:00, 22:30)।")
+        bot.send_message(message.chat.id, "❌ **अमान्य समय फॉर्मेट!**\nकृपया 24-घंटे का फॉर्मेट उपयोग करें (HH:MM)", parse_mode="Markdown")
 
-# 👑 📢 ओनर कमांड - अपडेटेड ऑल ग्रुप और ऑल यूजर ब्रॉडकास्ट फ़ीचर
+# 👑 📢 ओनर कमांड - अपडेटेड ऑल ग्रुप और ऑल यूजर ब्रॉडकास्ट फ़ीचर
 @bot.message_handler(commands=['broadcast'], chat_types=['private'])
 def handle_owner_broadcast(message):
     if not (OWNER_ID and message.from_user.id == OWNER_ID):
@@ -367,7 +371,7 @@ def handle_owner_broadcast(message):
         text=f"📊 **ग्लोबल ब्रॉडकास्ट रिपोर्ट:**\n\n"
              f"👥 **ग्रुप्स:**\n"
              f"✅ सफल: **{g_success}** | ❌ असफल: **{g_fail}**\n\n"
-             f"👤 **प्राइवेट यूज़र्स:**\n"
+             f"👤 **प्राइवेट यूज़र्स:**\n"
              f"✅ सफल: **{u_success}** | ❌ असफल: **{u_fail}**\n\n"
              f"🎯 ब्रॉडकास्ट प्रक्रिया पूरी तरह संपन्न!", 
         parse_mode="Markdown"
@@ -388,7 +392,7 @@ def manual_leaderboard_sender(message):
         success_count = 0
         
         for (chat_id,) in all_chats:
-            cursor.execute("SELECT user_name, correct_count, wrong_count FROM daily_scores WHERE chat_id = ?", (chat_id,))
+            cursor.execute("SELECT user_name, correct_count, wrong_count FROM daily_scores WHERE chat_id = ? ORDER BY user_name", (chat_id,))
             all_users = cursor.fetchall()
             
             calculated_leaderboard = []
@@ -402,12 +406,12 @@ def manual_leaderboard_sender(message):
             
             lb_text = "🏆 **Result [Top 20 user's Leaderboard]**\n\n"
             lb_text += f"📅 Date: {now.strftime('%d-%m-%Y')} | ⏰ Time: {now.strftime('%H:%M')} (मैनुअल)\n"
-            lb_text += "📊 Marking: Right (+2) | Rong (-0.5)\n\n"
+            lb_text += "📊 Marking: Right (+2) | Wrong (-0.5)\n\n"
             
             if top_20:
-                medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-                for idx, (name, correct, wrong, final_score) in enumerate(top_20, 1):
-                    medal = medals.get(idx, f"{idx}.")
+                medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+                for idx, (name, correct, wrong, final_score) in enumerate(top_20):
+                    medal = medals.get(idx, f"{idx+1}.")
                     lb_text += f"{medal} **{name}** — {final_score} pts (✅{correct} | ❌{wrong})\n"
             else:
                 lb_text += "⚠️ No users participated in the quiz today."
@@ -418,11 +422,13 @@ def manual_leaderboard_sender(message):
                 success_count += 1
                 time.sleep(0.05)
             except Exception: pass
-            
+        
+        # ✅ Result के बाद old polls को INACTIVE mark करो
+        cursor.execute("UPDATE poll_mapping SET is_active = 0")
         cursor.execute("DELETE FROM daily_scores")
-        cursor.execute("DELETE FROM poll_mapping")
         conn.commit()
-    bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"✅ **मालिक, मैनुअल रिज़ल्ट सफलतापूर्वक भेज दिया गया है!**\n📊 कुल **{success_count}** एक्टिव ग्रुप्स में लीडरबोर्ड सेंड हुआ और स्कोर रीसेट कर दिए गए हैं।", parse_mode="Markdown")
+        
+    bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"✅ **मालिक, मैनुअल रिज़ल्ट सफलतापूर्वक {success_count} ग्रुप्स में भेज दिया गया!**\n\n📊 सभी यूज़र्स का स्कोर रीसेट कर दिया गया है।", parse_mode="Markdown")
 
 # 🏆 दैनिक लीडरबोर्ड सेंडर शेड्यूलर
 def daily_leaderboard_scheduler():
@@ -454,7 +460,7 @@ def daily_leaderboard_scheduler():
                     all_chats = cursor.fetchall()
                     
                     for (chat_id,) in all_chats:
-                        cursor.execute("SELECT user_name, correct_count, wrong_count FROM daily_scores WHERE chat_id = ?", (chat_id,))
+                        cursor.execute("SELECT user_name, correct_count, wrong_count FROM daily_scores WHERE chat_id = ? ORDER BY user_name", (chat_id,))
                         all_users = cursor.fetchall()
                         
                         calculated_leaderboard = []
@@ -469,12 +475,12 @@ def daily_leaderboard_scheduler():
                         lb_text = "🏆 **Result [Top 20 user's Leaderboard]**\n\n"
                         lb_text += f"📅 Date: {now.strftime('%d-%m-%Y')} | ⏰ Time: {db_time}\n"
                         lb_text += "🎓 Performance of the Last 24 Hours:\n"
-                        lb_text += "📊 Marking: Right (+2) | Rong (-0.5)\n\n"
+                        lb_text += "📊 Marking: Right (+2) | Wrong (-0.5)\n\n"
                         
                         if top_20:
-                            medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-                            for idx, (name, correct, wrong, final_score) in enumerate(top_20, 1):
-                                medal = medals.get(idx, f"{idx}.")
+                            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+                            for idx, (name, correct, wrong, final_score) in enumerate(top_20):
+                                medal = medals.get(idx, f"{idx+1}.")
                                 lb_text += f"{medal} **{name}** — {final_score} point (✅{correct} | ❌{wrong})\n"
                         else:
                             lb_text += "⚠️ No users participated in the quiz today."
@@ -485,9 +491,10 @@ def daily_leaderboard_scheduler():
                             time.sleep(0.05)
                         except Exception: 
                             pass
-                            
+                    
+                    # ✅ Result के बाद old polls को INACTIVE mark करो
+                    cursor.execute("UPDATE poll_mapping SET is_active = 0")
                     cursor.execute("DELETE FROM daily_scores")
-                    cursor.execute("DELETE FROM poll_mapping")
                     conn.commit()
                     
                 has_sent_today = True
@@ -497,46 +504,67 @@ def daily_leaderboard_scheduler():
             print(f"शेड्यूलर एरर: {sched_err}")
         time.sleep(20)
 
-# 🎯 LIVE पोल उत्तर ट्रैकर और स्कोर कैलकुलेटर (100% फिक्स लॉजिक)
+# 🎯 LIVE पोल उत्तर ट्रैकर और स्कोर कैलकुलेटर - WITH VALIDITY CHECK ✅
 @bot.poll_answer_handler()
 def handle_poll_answer(poll_answer):
-    poll_id = poll_answer.poll_id
-    user_id = poll_answer.user.id
-    
-    first_name = poll_answer.user.first_name if poll_answer.user.first_name else ""
-    last_name = poll_answer.user.last_name if poll_answer.user.last_name else ""
-    user_name = f"{first_name} {last_name}".strip()
-    if not user_name: user_name = f"User_{user_id}"
-
-    with sqlite3.connect(DB_FILE, timeout=20) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT chat_id, correct_id FROM poll_mapping WHERE poll_id = ?", (poll_id,))
-        mapping = cursor.fetchone()
+    try:
+        poll_id = poll_answer.poll_id
+        user_id = poll_answer.user_id  # ✅ सही field
         
-        if mapping and poll_answer.option_ids:
-            chat_id = mapping[0]
-            correct_id = mapping[1]
-            chosen_option = poll_answer.option_ids[0]
+        first_name = poll_answer.user.first_name if poll_answer.user.first_name else ""
+        last_name = poll_answer.user.last_name if poll_answer.user.last_name else ""
+        user_name = f"{first_name} {last_name}".strip()
+        if not user_name: 
+            user_name = f"User_{user_id}"
+
+        with sqlite3.connect(DB_FILE, timeout=20) as conn:
+            cursor = conn.cursor()
             
-            if chosen_option == correct_id:
-                # सही उत्तर पर +2 मार्क्स कैलकुलेशन के लिए काउंट जोड़ें
-                cursor.execute('''
-                    INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
-                    VALUES (?, ?, ?, 1, 0)
-                    ON CONFLICT(chat_id, user_id) DO UPDATE SET
-                    user_name = excluded.user_name,
-                    correct_count = correct_count + 1
-                ''', (chat_id, user_id, user_name))
+            # ✅ Poll mapping से सही data निकालें और VALIDITY CHECK करें
+            cursor.execute("SELECT chat_id, correct_id, is_active FROM poll_mapping WHERE poll_id = ?", (poll_id,))
+            mapping = cursor.fetchone()
+            
+            if mapping:
+                chat_id = mapping[0]
+                correct_id = mapping[1]
+                is_active = mapping[2]
+                
+                # ✅ अगर poll INACTIVE है तो score न add करो
+                if is_active == 0:
+                    print(f"⚠️ {user_name} ने पुराने poll का जवाब दिया - स्कोर नहीं जोड़ा गया")
+                    return
+                
+                # ✅ Option ID check करें
+                if poll_answer.option_ids:
+                    chosen_option = poll_answer.option_ids[0]
+                    
+                    if chosen_option == correct_id:
+                        # ✅ सही उत्तर के लिए score अपडेट करें
+                        cursor.execute('''
+                            INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
+                            VALUES (?, ?, ?, 1, 0)
+                            ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                            user_name = excluded.user_name,
+                            correct_count = correct_count + 1
+                        ''', (chat_id, user_id, user_name))
+                        print(f"✅ {user_name} को सही जवाब के लिए +2 मार्क्स दिए गए")
+                    else:
+                        # ✅ गलत उत्तर के लिए score अपडेट करें
+                        cursor.execute('''
+                            INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
+                            VALUES (?, ?, ?, 0, 1)
+                            ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                            user_name = excluded.user_name,
+                            wrong_count = wrong_count + 1
+                        ''', (chat_id, user_id, user_name))
+                        print(f"❌ {user_name} को गलत जवाब के लिए -0.5 मार्क्स दिए गए")
+                    
+                    conn.commit()
             else:
-                # गलत उत्तर पर -0.5 मार्क्स कैलकुलेशन के लिए काउंट जोड़ें
-                cursor.execute('''
-                    INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
-                    VALUES (?, ?, ?, 0, 1)
-                    ON CONFLICT(chat_id, user_id) DO UPDATE SET
-                    user_name = excluded.user_name,
-                    wrong_count = wrong_count + 1
-                ''', (chat_id, user_id, user_name))
-            conn.commit()
+                print(f"⚠️ Poll mapping नहीं मिला: {poll_id}")
+                
+    except Exception as e:
+        print(f"Poll answer handler में error: {e}")
 
 # 📊 यूजर लाइव स्कोर ट्रैकर कमांड
 @bot.message_handler(commands=['myscore'])
@@ -560,7 +588,7 @@ def check_user_score(message):
         score_text = (
             f"🎯 **{message.from_user.first_name}**, your live report card:\n\n"
             f"✅ correct ans: **{correct}** (+{correct * 2} point)\n"
-            f"❌ rong ans: **{wrong}** (-{wrong * 0.5} point)\n"
+            f"❌ wrong ans: **{wrong}** (-{wrong * 0.5} point)\n"
             f"🔥 **final score: {final_score} point**\n\n"
             f"ℹ️ Note: This score will be reset after the leaderboard is published."
         )
@@ -580,7 +608,7 @@ def send_welcome(message):
     if not full_name:
         full_name = f"User_{user_id}"
 
-        # 1. अगर बॉट को किसी ग्रुप में स्टार्ट किया गया हो
+    # 1. अगर बॉट को किसी ग्रुप में स्टार्ट किया गया हो
     if chat_type in ['group', 'supergroup']:
         group_text = (
             f"👋 **Hello {message.from_user.first_name}!** Thanks for adding me to your group!\n\n"
@@ -632,7 +660,7 @@ def send_welcome(message):
             f"📊 वर्तमान लीडरबोर्ड टाइम: **{db_time}**\n"
             "⚙️ आप सीधे यहीं पर `/settime HH:MM` लिखकर टाइम बदल सकते हैं।\n"
             "🏆 तुरंत रिज़ल्ट भेजने और स्कोर रीसेट करने के लिए `/sendresult` लिखें।\n"
-            "📢 किसी भी मैसेज पर रिप्लाई करके `/broadcast` लिखने से वह सभी ग्रुप्स और यूज़र्स के पर्सनल इनबॉक्स में चला जाएगा।\n"
+            "📢 किसी भी मैसेज पर रिप्लाई करके `/broadcast` लिखने से वह सभी ग्रुप्स और यूज़र्स को भेज दिया जाएगा।\n"
             "📊 बॉट का लाइव स्टैट्स देखने के लिए `/status` का उपयोग करें।\n\n"
             "बॉट को ग्रुप में जोड़ने के लिए नीचे दिए बटन का उपयोग करें।"
         )
@@ -681,7 +709,7 @@ def send_help(message):
     try: bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
     except Exception: pass
 
-# 📊 लाइव स्टेटस कमांड (ग्रुप्स और टोटल यूज़र्स दोनों का लाइव काउंट)
+# 📊 लाइव स्टेटस कमांड (ग्रुप्स और टोटल यूज़र्स दोनों का लाइव काउंट)
 @bot.message_handler(commands=['status'])
 def send_stats(message):
     if OWNER_ID and message.from_user.id == OWNER_ID:
