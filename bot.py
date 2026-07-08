@@ -32,7 +32,7 @@ if OWNER_ID:
 def init_db():
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
-        # 1. ग्रुप्स सेटिंग्स टेबल
+        # 1. ग्रुप्स सेटिंग्स टेबल - IMPROVED WITH PROPER INITIALIZATION
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS groups (
                 chat_id INTEGER PRIMARY KEY,
@@ -52,7 +52,7 @@ def init_db():
                 join_time REAL
             )
         ''')
-        # 2. पोल से चैट आईडी मैप करने का टेबल - IMPROVED WITH VALIDITY CHECK
+        # 2. पोल से चैट आईडी मैप करने का टेबल - WITH VALIDITY CHECK
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS poll_mapping (
                 poll_id TEXT PRIMARY KEY,
@@ -94,7 +94,7 @@ def is_user_admin(chat_id, user_id):
     except Exception:
         return False
 
-# 🔄 हर ग्रुप के लिए कस्टमाइज्ड पोल शेड्यूलर लूप
+# 🔄 हर ग्रुप के लिए कस्टमाइज्ड पोल शेड्यूलर लूप - FIXED INFINITE POLL BUG
 def global_poll_manager():
     while True:
         try:
@@ -105,7 +105,16 @@ def global_poll_manager():
                 current_now = time.time()
 
                 for chat_id, current_index, last_poll_id, last_sent_time, language, interval, auto_delete in all_groups:
-                    if current_now - last_sent_time >= interval:
+                    # ✅ FIX: अगर last_sent_time = 0 है (नया ग्रुप), तो सही तरीके से set करो
+                    if last_sent_time == 0:
+                        cursor.execute("UPDATE groups SET last_sent_time = ? WHERE chat_id = ?", (current_now, chat_id))
+                        conn.commit()
+                        continue  # अगली cycle में poll भेजेंगे
+                    
+                    # ✅ FIX: Time interval check - सही तरीके से करो
+                    time_elapsed = current_now - last_sent_time
+                    
+                    if time_elapsed >= interval:
                         
                         if last_poll_id is not None and auto_delete == 1:
                             try:
@@ -142,20 +151,23 @@ def global_poll_manager():
                                            (poll_api_id, chat_id, quiz["correct_id"], current_now))
 
                             new_index = (current_index + 1) % len(filtered_quiz)
+                            # ✅ FIX: last_sent_time को current_now से set करो (elapsed time नहीं)
                             cursor.execute('''
                                 UPDATE groups 
                                 SET current_index = ?, last_poll_id = ?, last_sent_time = ? 
                                 WHERE chat_id = ?
                             ''', (new_index, new_poll_id, current_now, chat_id))
                             conn.commit()
+                            print(f"✅ Poll भेजा गया - Chat: {chat_id}, Time: {datetime.now()}")
 
                         except Exception as e:
+                            print(f"Poll भेजने में error: {e}")
                             if "bot was kicked" in str(e).lower() or "chat not found" in str(e).lower():
                                 cursor.execute("DELETE FROM groups WHERE chat_id = ?", (chat_id,))
                                 conn.commit()
         except Exception as db_err:
             print(f"डेटाबेस लूप एरर: {db_err}")
-        time.sleep(5)
+        time.sleep(10)  # ✅ 10 seconds में एक बार चेक करो (5 से बढ़ाया)
 
 # ⚙️ मुख्य सेटिंग्स मेनू यूआई जेनरेटर
 def get_settings_markup(chat_id):
@@ -425,6 +437,8 @@ def manual_leaderboard_sender(message):
         
         # ✅ Result के बाद old polls को INACTIVE mark करो
         cursor.execute("UPDATE poll_mapping SET is_active = 0")
+        # ✅ सभी ग्रुप्स में last_sent_time को update करो ताकि duplicate polls न हों
+        cursor.execute("UPDATE groups SET last_sent_time = ?", (time.time(),))
         cursor.execute("DELETE FROM daily_scores")
         conn.commit()
         
@@ -494,6 +508,8 @@ def daily_leaderboard_scheduler():
                     
                     # ✅ Result के बाद old polls को INACTIVE mark करो
                     cursor.execute("UPDATE poll_mapping SET is_active = 0")
+                    # ✅ सभी ग्रुप्स में last_sent_time को update करो
+                    cursor.execute("UPDATE groups SET last_sent_time = ?", (time.time(),))
                     cursor.execute("DELETE FROM daily_scores")
                     conn.commit()
                     
@@ -732,18 +748,22 @@ def send_stats(message):
     else:
         bot.send_message(message.chat.id, "❌ यह कमांड सिर्फ बॉट ओनर के लिए है।")
 
-# 🤖 ग्रुप जॉइन/लीव ट्रैकर
+# 🤖 ग्रुप जॉइन/लीव ट्रैकर - IMPROVED WITH PROPER INITIALIZATION
 @bot.my_chat_member_handler()
 def handle_left_or_joined(message):
     new_status = message.new_chat_member.status
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
         if new_status in ["administrator", "member"]:
-            cursor.execute("INSERT OR IGNORE INTO groups (chat_id, interval) VALUES (?, 1800)", (message.chat.id,))
-            cursor.execute("UPDATE groups SET last_sent_time = 0 WHERE chat_id = ?", (message.chat.id,))
+            # ✅ नए ग्रुप को proper initialization के साथ add करो
+            current_time = time.time()
+            cursor.execute('''
+                INSERT OR IGNORE INTO groups (chat_id, interval, last_sent_time) 
+                VALUES (?, 1800, ?)
+            ''', (message.chat.id, current_time))
             conn.commit()
             try:
-                bot.send_message(chat_id=message.chat.id, text=f"🎉 **Bot activated successfully!**\n\n📢 Automated quizzes have been activated for this group.", parse_mode="Markdown")
+                bot.send_message(chat_id=message.chat.id, text=f"🎉 **Bot activated successfully!**\n\n📢 Automated quizzes will start sending at your configured interval.", parse_mode="Markdown")
             except Exception: pass
         elif new_status in ["left", "kicked"]:
             cursor.execute("DELETE FROM groups WHERE chat_id = ?", (message.chat.id,))
