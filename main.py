@@ -872,7 +872,6 @@ def handle_left_or_joined(message):
             cursor.execute("UPDATE groups SET last_sent_time = 0 WHERE chat_id = ?", (message.chat.id,))
             conn.commit()
             
-            # 📌 [UPDATED] यहाँ भी बिल्कुल वही मैसेज सेट कर दिया गया है जो /start में आता है
             group_text = (
                 f"🎉 **Join Group Successfully!**\n"
                 f"📢 Automated quizzes have been activated for this group.\n\n"
@@ -889,7 +888,13 @@ def handle_left_or_joined(message):
             )
             group_markup = InlineKeyboardMarkup()
             add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-            group_markup.add(InlineKeyboardButton(text="➕ Add Me To Your Group ➕", url=add_to_group_url))
+            
+            # [UPDATED] style="primary" जोड़कर बटन का बैकग्राउंड नीला (Blue) किया गया है
+            group_markup.add(InlineKeyboardButton(
+                text="➕ Add Me To Your Group ➕", 
+                url=add_to_group_url,
+                style="primary"
+            ))
             
             try:
                 bot.send_message(chat_id=message.chat.id, text=group_text, reply_markup=group_markup, parse_mode="Markdown")
