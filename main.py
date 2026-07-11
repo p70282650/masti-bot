@@ -467,7 +467,7 @@ def manual_leaderboard_sender(message):
     
     # [UPDATED] बटन में style="success" जोड़ दिया है, जिससे यह हरे रंग (Green) का दिखेगा
     markup.add(InlineKeyboardButton(
-        text="➕ Add Me To Your Group ➕", 
+        text="Add Me To Your Group", 
         url=add_to_group_url,
         style="success"
     ))
@@ -707,12 +707,12 @@ def check_user_score(message):
 
     try: 
         score_text = (
-            f"🇮🇳 **hello {message.from_user.first_name}**, your today's quiz score!\n\n"
+            f"🎉 **congratulations {message.from_user.first_name}**, your today's quiz score!\n\n"
             f"✅ Correct Ans: **{correct}** (+{correct * 2} point)\n"
             f"❌ Wrong Ans: **{wrong}** (-{wrong * 0.5} point)\n"
             f"🔥 **Final Score: {final_score} point**\n\n"
             f"ℹ️ Note: This score will be reset after the leaderboard is published.\n"
-            f"If you don't want to wait for the results, you can use the `/myscore` command at any time."
+            f"⭐ If you don't want to wait for the results, you can use the `/myscore` command at any time."
         )
         bot.reply_to(message, score_text, parse_mode="Markdown")
     except Exception: 
@@ -897,7 +897,7 @@ def generate_status_page(page=0):
         f"👤 Total Active Users: **{u_count}**\n"
         f"📖 Page: **{page + 1} / {total_pages}**\n"
         f"---------------------------------------\n\n"
-        f"🏰 **Active Groups List:**\n\n"
+        f"⚡ **Active Groups List:**\n\n"
     )
 
     if current_page_groups:
@@ -926,9 +926,9 @@ def generate_status_page(page=0):
     buttons_row = []
 
     if page > 0:
-        buttons_row.append(InlineKeyboardButton(text="◀️ Previous", callback_data=f"statpage_{page-1}", style="primary"))
+        buttons_row.append(InlineKeyboardButton(text="⏮️ Previous", callback_data=f"statpage_{page-1}", style="primary"))
     if end_idx < g_count:
-        buttons_row.append(InlineKeyboardButton(text="Next ▶️", callback_data=f"statpage_{page+1}", style="primary"))
+        buttons_row.append(InlineKeyboardButton(text="Next Page 🔀", callback_data=f"statpage_{page+1}", style="primary"))
 
     if buttons_row:
         markup.row(*buttons_row)
@@ -1013,6 +1013,6 @@ def handle_left_or_joined(message):
 threading.Thread(target=global_poll_manager, daemon=True).start()
 threading.Thread(target=daily_leaderboard_scheduler, daemon=True).start()
 
-print("Successfully 🇮🇳 deployed...🚀 check kare ✅")
+print("Successfully 🇮🇳 deployed...🚀")
 
 bot.infinity_polling(timeout=60, long_polling_timeout=60)
