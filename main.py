@@ -464,7 +464,13 @@ def manual_leaderboard_sender(message):
     
     markup = InlineKeyboardMarkup()
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-    markup.add(InlineKeyboardButton(text="➕ Add Me To Your Group ➕", url=add_to_group_url))
+    
+    # [UPDATED] बटन में style="success" जोड़ दिया है, जिससे यह हरे रंग (Green) का दिखेगा
+    markup.add(InlineKeyboardButton(
+        text="➕ Add Me To Your Group ➕", 
+        url=add_to_group_url,
+        style="success"
+    ))
 
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
@@ -482,8 +488,8 @@ def manual_leaderboard_sender(message):
                 if (correct + wrong) > 0:
                     calculated_leaderboard.append((final_score, name, correct, wrong))
             
-            # 🎯 [ONLY SCORE SORTING] सिर्फ स्कोर के आधार पर सॉर्ट होगा, नाम चेक नहीं होगा
-            calculated_leaderboard.sort(key=lambda x: x[0], reverse=True)
+            # [FIXED] x[0] की जगह केवल x किया ताकि स्कोर बराबर होने पर नाम मैचिंग से एरर न आए
+            calculated_leaderboard.sort(key=lambda x: x, reverse=True)
             top_20 = calculated_leaderboard[:20]
             
             lb_text = "🏆 **Result [Top 20 user's Leaderboard]**\n"
