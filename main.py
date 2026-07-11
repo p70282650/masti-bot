@@ -439,9 +439,7 @@ def handle_owner_broadcast(message):
              f"🎯 **Broadcast completed successfully!**", 
         parse_mode="Markdown"
     )
-    
 
-@bot.message_handler(commands=['sendresult'])
 def manual_leaderboard_sender(message):
     is_owner = (OWNER_ID and message.from_user.id == OWNER_ID)
     is_valid_chat = (message.chat.type == 'private' or (SUPPORT_GROUP_ID and message.chat.id == SUPPORT_GROUP_ID))
@@ -457,15 +455,15 @@ def manual_leaderboard_sender(message):
     
     markup = InlineKeyboardMarkup()
 
-# [CORRECTED] 't.me' के बाद '/' लगाया ताकि सही URL बने
-add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
+    # [FIXED] इन लाइनों के आगे सही इंडेंटेशन (4 स्पेस) सेट कर दिया है
+    add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
 
-# [UPDATED] style="success" जोड़कर बटन का बैकग्राउंड हरा (Green) किया गया है
-markup.add(InlineKeyboardButton(
-    text="➕ Add Me To Your Group ➕", 
-    url=add_to_group_url,
-    style="success"
-))
+    # [UPDATED] बटन का बैकग्राउंड हरा (Green) करने के लिए style="success" लगा है
+    markup.add(InlineKeyboardButton(
+        text="➕ Add Me To Your Group ➕", 
+        url=add_to_group_url,
+        style="success"
+    ))
 
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
@@ -481,10 +479,8 @@ markup.add(InlineKeyboardButton(
             for name, correct, wrong in all_users:
                 final_score = (correct * 2) - (wrong * 0.5)
                 if (correct + wrong) > 0:
-                    # [CORRECTED] सॉर्टिंग सही करने के लिए final_score को टुपल में सबसे आगे रखा
                     calculated_leaderboard.append((final_score, name, correct, wrong))
             
-            # [CORRECTED] अब सबसे ज़्यादा स्कोर वाले यूज़र्स बिल्कुल टॉप पर दिखेंगे
             calculated_leaderboard.sort(key=lambda x: x[0], reverse=True)
             top_20 = calculated_leaderboard[:20]
             
@@ -498,7 +494,6 @@ markup.add(InlineKeyboardButton(
                 medals = {1: "🥇", 2: "🥈", 3: "🥉"}
                 for idx, (final_score, name, correct, wrong) in enumerate(top_20, 1):
                     medal = medals.get(idx, f"{idx}.")
-                    # स्कोर फ़ॉर्मेट (.0 हटाने के लिए)
                     display_score = f"{final_score:.1f}" if final_score % 0.5 != 0 else f"{int(final_score)}"
                     
                     lb_text += f"{medal} **{name}**\n"
@@ -518,8 +513,9 @@ markup.add(InlineKeyboardButton(
         cursor.execute("DELETE FROM daily_scores")
         cursor.execute("DELETE FROM poll_mapping")
         conn.commit()
+        
     bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"✅ **Chief, the manual result has been successfully sent.!**\n📊 total **{success_count}** Leaderboard sent to active groups and scores have been reset!", parse_mode="Markdown")
-
+    
 def daily_leaderboard_scheduler():
     has_sent_today = False
     last_checked_date = ""
