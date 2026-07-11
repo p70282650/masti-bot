@@ -847,7 +847,7 @@ def send_help(message):
     owner_url = f"tg://user?id={int(OWNER_ID)}"
     
     # बटन में लिंक पास किया और आकर्षक लुक के लिए इमोजी जोड़े
-    markup.add(InlineKeyboardButton(text="💬 Contact Support 🚀", url=owner_url))
+    markup.add(InlineKeyboardButton(text="💬 Contact Support", url=owner_url))
     
     try: 
         bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
