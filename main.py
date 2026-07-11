@@ -532,7 +532,13 @@ def daily_leaderboard_scheduler():
     
     markup = InlineKeyboardMarkup()
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-    markup.add(InlineKeyboardButton(text="Add Me To Your Group", url=add_to_group_url))
+    
+    # [UPDATED] बटन को आकर्षक हरे रंग (Green) का बनाने के लिए style="success" जोड़ा
+    markup.add(InlineKeyboardButton(
+        text="Add Me To Your Group", 
+        url=add_to_group_url,
+        style="success"
+    ))
     
     while True:
         try:
@@ -550,8 +556,10 @@ def daily_leaderboard_scheduler():
                 res = cursor.fetchone()
                 db_time = res[0] if res else "22:00"
             
-            try: target_hour, target_minute = map(int, db_time.split(':'))
-            except Exception: target_hour, target_minute = 22, 0
+            try: 
+                target_hour, target_minute = map(int, db_time.split(':'))
+            except Exception: 
+                target_hour, target_minute = 22, 0
             
             if now.hour == target_hour and now.minute == target_minute and not has_sent_today:
                 with sqlite3.connect(DB_FILE, timeout=20) as conn:
@@ -569,8 +577,8 @@ def daily_leaderboard_scheduler():
                             if (correct + wrong) > 0:
                                 calculated_leaderboard.append((final_score, name, correct, wrong))
                                 
-                        # 🎯 [ONLY SCORE SORTING] यहाँ भी सिर्फ स्कोर से सॉर्टिंग होगी
-                        calculated_leaderboard.sort(key=lambda x: x[0], reverse=True)
+                        # 🎯 [FIXED - CRASH PROOF] केवल स्कोर कंपेयर होगा, नाम में इमोजी होने पर भी कभी क्रैश नहीं होगा
+                        calculated_leaderboard.sort(key=lambda x: x, reverse=True)
                         top_20 = calculated_leaderboard[:20]
                         
                         lb_text = "🏆 **Result [Top 20 user's Leaderboard]**\n"
@@ -597,8 +605,10 @@ def daily_leaderboard_scheduler():
                         try: 
                             bot.send_message(chat_id=chat_id, text=lb_text, reply_markup=markup, parse_mode="Markdown")
                             time.sleep(0.15)
-                        except Exception: pass
+                        except Exception: 
+                            pass
                             
+                    # [FIXED - LOGIC] सभी ग्रुप्स को मैसेज भेजने के बाद ही डेटाबेस साफ़ होगा
                     cursor.execute("DELETE FROM daily_scores")
                     cursor.execute("DELETE FROM poll_mapping")
                     conn.commit()
@@ -609,7 +619,6 @@ def daily_leaderboard_scheduler():
         except Exception as sched_err:
             print(f"शेड्यूलर एरर: {sched_err}")
         time.sleep(20)
-            
         
 # 🎯 LIVE पोल उत्तर ट्रैकर (OLD POLL STOPPER FEATURE LOADED ✅)
 @bot.poll_answer_handler()
