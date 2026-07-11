@@ -622,51 +622,59 @@ def daily_leaderboard_scheduler():
 # 🎯 LIVE पोल उत्तर ट्रैकर (OLD POLL STOPPER FEATURE LOADED ✅)
 @bot.poll_answer_handler()
 def handle_poll_answer(poll_answer):
-    poll_id = poll_answer.poll_id
+    # [FIXED] poll_id को हमेशा साफ़ स्ट्रिंग में बदलें ताकि डेटाबेस से मैच हो सके
+    poll_id = str(poll_answer.poll_id)
     user_id = poll_answer.user.id
     
     first_name = poll_answer.user.first_name if poll_answer.user.first_name else ""
     last_name = poll_answer.user.last_name if poll_answer.user.last_name else ""
     user_name = f"{first_name} {last_name}".strip()
-    if not user_name: user_name = f"User_{user_id}"
+    if not user_name: 
+        user_name = f"User_{user_id}"
 
+    # अगर यूज़र ने अपना वोट वापस ले लिया (Retract Vote) तो स्कोर चेंज नहीं होगा
     if not poll_answer.option_ids:
         return
 
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
+        
+        # [SAFE CHECK] पोल आईडी को स्ट्रिंग बनाकर ही सर्च करें
         cursor.execute("SELECT chat_id, correct_id, creation_time FROM poll_mapping WHERE poll_id = ?", (poll_id,))
         mapping = cursor.fetchone()
         
         if not mapping:
+            print(f"⚠️ चेतावनी: Poll ID {poll_id} डेटाबेस मैपिंग में नहीं मिली!")
             return  
 
-        if mapping and poll_answer.option_ids:
-            chat_id = mapping[0]
-            correct_id = mapping[1]
-            creation_time = mapping[2]
-            chosen_option = poll_answer.option_ids[0]
-            
-            if time.time() - creation_time > 86400:
-                return  
+        chat_id = mapping[0]
+        correct_id = mapping[1]
+        creation_time = mapping[2] if mapping[2] is not None else time.time()
+        chosen_option = poll_answer.option_ids[0]
+        
+        # 24 घंटे का एंटी-चीट फ़िल्टर
+        if time.time() - creation_time > 86400:
+            return  
 
-            if chosen_option == correct_id:
-                cursor.execute('''
-                    INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
-                    VALUES (?, ?, ?, 1, 0)
-                    ON CONFLICT(chat_id, user_id) DO UPDATE SET
-                    user_name = excluded.user_name,
-                    correct_count = correct_count + 1
-                ''', (chat_id, user_id, user_name))
-            else:
-                cursor.execute('''
-                    INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
-                    VALUES (?, ?, ?, 0, 1)
-                    ON CONFLICT(chat_id, user_id) DO UPDATE SET
-                    user_name = excluded.user_name,
-                    wrong_count = wrong_count + 1
-                ''', (chat_id, user_id, user_name))
-            conn.commit()
+        # स्कोर अपडेट लॉजिक
+        if chosen_option == correct_id:
+            cursor.execute('''
+                INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
+                VALUES (?, ?, ?, 1, 0)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                user_name = excluded.user_name,
+                correct_count = daily_scores.correct_count + 1
+            ''', (chat_id, user_id, user_name))
+        else:
+            cursor.execute('''
+                INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count)
+                VALUES (?, ?, ?, 0, 1)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                user_name = excluded.user_name,
+                wrong_count = daily_scores.wrong_count + 1
+            ''', (chat_id, user_id, user_name))
+            
+        conn.commit()
 
 # 📊 यूजर लाइव स्कोर ट्रैकर कस्टमाइज्ड कमांड (प्राइवेट चैट ब्लॉक के साथ)
 @bot.message_handler(commands=['myscore'])
