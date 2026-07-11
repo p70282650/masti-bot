@@ -806,12 +806,11 @@ def send_help(message):
     chat_type = message.chat.type
     message_text = message.text.strip() if message.text else ""
     
-    # 🚨 [CRITICAL FIX] चेक करें कि क्या कमांड सिर्फ इसी बॉट के लिए है?
-    # अगर ग्रुप में कोई दूसरा बॉट ट्रिगर हुआ है (जैसे /help@OtherBot), तो यह फ़ंक्शन यहीं रुक जाएगा!
+    # 🚨 Check if the command is for this bot specifically in groups
     if chat_type in ['group', 'supergroup']:
         expected_full_command = f"/help@{BOT_USERNAME}"
         if "@" in message_text and not message_text.startswith(expected_full_command):
-            return  # ❌ दूसरे बॉट की कमांड है, मेरा बॉट शांत रहेगा
+            return  
 
     help_text = (
         "⚡ **Help & Guide - Daily Poll Bot:**\n\n"
@@ -826,11 +825,40 @@ def send_help(message):
         "Scoring: Accuracy matters! The leaderboard calculates the Top 20 users with a **negative marking system** applied for wrong answers.\n\n"
         "🔐 `/settings` - Open the configuration panel (Group Admins only)."
     )
+    
     markup = InlineKeyboardMarkup()
-    owner_url = "https://t.me/comeback_009"
-    markup.add(InlineKeyboardButton(text="Contact Support", url=owner_url))
-    try: bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
-    except Exception: pass
+    
+    # [UPDATED] callback_data के साथ स्टाइलिश नीला बटन (style="primary")
+    markup.add(InlineKeyboardButton(
+        text="💬 Contact Support", 
+        callback_data="help_support_click",
+        style="primary"
+    ))
+    
+    try: 
+        bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
+    except Exception: 
+        pass
+
+# 📌 [NEW] बटन क्लिक हैंडलर - जो सीधे .env की OWNER_ID से कनेक्टेड है
+@bot.callback_query_handler(func=lambda call: call.data == "help_support_click")
+def handle_support_click(call):
+    try:
+        # [CONNECTED TO OWNER_ID] .env वाली OWNER_ID का उपयोग करके सीधे ओनर की प्रोफाइल का लिंक बनाया
+        # OWNER_ID को इन्टीजर (int) में बदला ताकि टेलीग्राम का 'tg://user?id=' लिंक बिल्कुल सही काम करे
+        owner_link = f"tg://user?id={int(OWNER_ID)}"
+        
+        support_text = (
+            "🤝 **Need Help?**\n\n"
+            "You can contact our bot owner directly by clicking the link below:\n"
+            f"👉 [Click Here to Contact Owner]({owner_link})\n\n"
+            "Feel free to ask any questions or report bugs! 🚀"
+        )
+        
+        bot.answer_callback_query(call.id, text="Loading Owner Profile...", show_alert=False)
+        bot.send_message(chat_id=call.message.chat.id, text=support_text, parse_mode="Markdown")
+    except Exception as e:
+        print(f"सपोर्ट बटन एरर: {e}")
         
 
 # 📊 लाइव स्टेटस कमांड (Strict Group & Owner Security Added)
