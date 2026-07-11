@@ -448,6 +448,7 @@ def handle_owner_broadcast(message):
         parse_mode="Markdown"
     )
 
+@bot.message_handler(commands=['sendresult'])
 def manual_leaderboard_sender(message):
     is_owner = (OWNER_ID and message.from_user.id == OWNER_ID)
     is_valid_chat = (message.chat.type == 'private' or (SUPPORT_GROUP_ID and message.chat.id == SUPPORT_GROUP_ID))
@@ -462,16 +463,8 @@ def manual_leaderboard_sender(message):
     now = datetime.now(IST)
     
     markup = InlineKeyboardMarkup()
-
-    # [FIXED] इन लाइनों के आगे सही इंडेंटेशन (4 स्पेस) सेट कर दिया है
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-
-    # [UPDATED] बटन का बैकग्राउंड हरा (Green) करने के लिए style="success" लगा है
-    markup.add(InlineKeyboardButton(
-        text="➕ Add Me To Your Group ➕", 
-        url=add_to_group_url,
-        style="success"
-    ))
+    markup.add(InlineKeyboardButton(text="➕ Add Me To Your Group ➕", url=add_to_group_url))
 
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
@@ -489,6 +482,7 @@ def manual_leaderboard_sender(message):
                 if (correct + wrong) > 0:
                     calculated_leaderboard.append((final_score, name, correct, wrong))
             
+            # 🎯 [ONLY SCORE SORTING] सिर्फ स्कोर के आधार पर सॉर्ट होगा, नाम चेक नहीं होगा
             calculated_leaderboard.sort(key=lambda x: x[0], reverse=True)
             top_20 = calculated_leaderboard[:20]
             
@@ -522,23 +516,17 @@ def manual_leaderboard_sender(message):
         cursor.execute("DELETE FROM poll_mapping")
         conn.commit()
         
-    bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"✅ **Chief, the manual result has been successfully sent.!**\n📊 total **{success_count}** Leaderboard sent to active groups and scores have been reset!", parse_mode="Markdown")
-    
+    try:
+        bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"✅ **Chief, the manual result has been successfully sent!**\n📊 Total **{success_count}** Leaderboards sent to active groups and scores have been reset!", parse_mode="Markdown")
+    except Exception: pass
+
 def daily_leaderboard_scheduler():
     has_sent_today = False
     last_checked_date = ""
     
     markup = InlineKeyboardMarkup()
-    
-    # [FIXED] BOT_USERNAME के पहले स्लैश (/) मिसिंग था जिससे URL गलत बन रहा था, उसे ठीक किया
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-    
-    # [UPDATED] style="success" जोड़कर बटन का बैकग्राउंड हरा (Green) किया गया है
-    markup.add(InlineKeyboardButton(
-        text="Add Me To Your Group", 
-        url=add_to_group_url,
-        style="success"
-    ))
+    markup.add(InlineKeyboardButton(text="Add Me To Your Group", url=add_to_group_url))
     
     while True:
         try:
@@ -554,7 +542,6 @@ def daily_leaderboard_scheduler():
                 cursor = conn.cursor()
                 cursor.execute("SELECT value FROM bot_settings WHERE key = 'leaderboard_time'")
                 res = cursor.fetchone()
-                # [CORRECTED] डेटाबेस से टुपल की जगह साफ़ स्ट्रिंग निकालने के लिए res[0] किया
                 db_time = res[0] if res else "22:00"
             
             try: target_hour, target_minute = map(int, db_time.split(':'))
@@ -574,10 +561,9 @@ def daily_leaderboard_scheduler():
                         for name, correct, wrong in all_users:
                             final_score = (correct * 2) - (wrong * 0.5)
                             if (correct + wrong) > 0:
-                                # [CORRECTED] सॉर्टिंग सही करने के लिए final_score को टुपल में सबसे आगे रखा
                                 calculated_leaderboard.append((final_score, name, correct, wrong))
                                 
-                        # [CORRECTED] अब सबसे ज़्यादा स्कोर वाले यूज़र्स बिल्कुल टॉप पर दिखेंगे
+                        # 🎯 [ONLY SCORE SORTING] यहाँ भी सिर्फ स्कोर से सॉर्टिंग होगी
                         calculated_leaderboard.sort(key=lambda x: x[0], reverse=True)
                         top_20 = calculated_leaderboard[:20]
                         
@@ -592,7 +578,6 @@ def daily_leaderboard_scheduler():
                             medals = {1: "🥇", 2: "🥈", 3: "🥉"}
                             for idx, (final_score, name, correct, wrong) in enumerate(top_20, 1):
                                 medal = medals.get(idx, f"{idx}.")
-                                # स्कोर फ़ॉर्मेट (.0 हटाने के लिए)
                                 display_score = f"{final_score:.1f}" if final_score % 0.5 != 0 else f"{int(final_score)}"
                                 
                                 lb_text += f"{medal} **{name}**\n"
@@ -618,6 +603,7 @@ def daily_leaderboard_scheduler():
         except Exception as sched_err:
             print(f"शेड्यूलर एरर: {sched_err}")
         time.sleep(20)
+            
         
 # 🎯 LIVE पोल उत्तर ट्रैकर (OLD POLL STOPPER FEATURE LOADED ✅)
 @bot.poll_answer_handler()
