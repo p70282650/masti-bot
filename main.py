@@ -91,11 +91,23 @@ def init_db():
         ''')
         cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('leaderboard_time', '22:00')")
         
-        # 🔍 [ANTI-SPAM DB CONFIG] नया कॉलम जोड़ने के लिए पुराना डेटाबेस अपडेट लॉजिक
+        # 🔍 [ANTI-SPAM SETTINGS DB] पुराना सेटिंग्स कॉलम लॉजिक
         try:
             cursor.execute("ALTER TABLE groups ADD COLUMN settings_msg_id INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
-            pass  # अगर कॉलम पहले से बना हुआ है तो कोई एरर नहीं आएगा
+            pass 
+
+        # 🔍 [ANTI-SPAM START DB] /start मैसेज आईडी सेव करने के लिए नया कॉलम जोड़ा गया
+        try:
+            cursor.execute("ALTER TABLE groups ADD COLUMN start_msg_id INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass 
+
+        # 🔍 [ANTI-SPAM HELP DB] /help मैसेज आईडी सेव करने के लिए नया कॉलम जोड़ा गया
+        try:
+            cursor.execute("ALTER TABLE groups ADD COLUMN help_msg_id INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass 
             
         try:
             cursor.execute("ALTER TABLE poll_mapping ADD COLUMN creation_time REAL DEFAULT 0")
