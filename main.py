@@ -708,20 +708,18 @@ def send_welcome(message):
     chat_type = message.chat.type
     message_text = message.text.strip() if message.text else ""
     
-    # 🚨 [CRITICAL FIX] चेक करें कि क्या कमांड सिर्फ इसी बॉट के लिए है?
-    # अगर ग्रुप में कोई दूसरा बॉट ट्रिगर हुआ है (जैसे /start@OtherBot), तो यह फ़ंक्शन यहीं रुक जाएगा!
+    # 🚨 Check if the command is for this bot specifically in groups
     if chat_type in ['group', 'supergroup']:
         expected_full_command = f"/start@{BOT_USERNAME}"
-        # अगर सिर्फ '/start' है तो ठीक, लेकिन अगर '@' लगा है और वो इस बॉट का नाम नहीं है तो रिजेक्ट करें
         if "@" in message_text and not message_text.startswith(expected_full_command):
-            return  # ❌ दूसरे बॉट की कमांड है, मेरा बॉट शांत रहेगा
+            return  
 
     first_name = message.from_user.first_name if message.from_user.first_name else ""
     last_name = message.from_user.last_name if message.from_user.last_name else ""
     full_name = f"{first_name} {last_name}".strip()
     if not full_name: full_name = f"User_{user_id}"
 
-    # 📌 अगर बॉट को इसी ग्रुप में सही तरीके से /start किया जाए
+    # 📌 Group Chat Logic
     if chat_type in ['group', 'supergroup']:
         group_text = (
             f"🎉 **Bot activated successfully!**\n"
@@ -738,12 +736,19 @@ def send_welcome(message):
         )
         group_markup = InlineKeyboardMarkup()
         add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-        group_markup.add(InlineKeyboardButton(text="➕ Add Me To Your Group ➕", url=add_to_group_url))
+        
+        # [UPDATED] ग्रुप वाले बटन का बैकग्राउंड हरा (Green) किया गया है
+        group_markup.add(InlineKeyboardButton(
+            text="➕ Add Me To Your Group ➕", 
+            url=add_to_group_url,
+            style="success"
+        ))
+        
         try: bot.send_message(chat_id=message.chat.id, text=group_text, reply_markup=group_markup, parse_mode="Markdown")
         except Exception: pass
         return  
 
-    # प्राइवेट चैट का बाकी लॉजिक (यह वैसे ही रहेगा)
+    # Private Chat Logic
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO users (user_id, user_name, join_time) VALUES (?, ?, ?)", (user_id, full_name, time.time()))
@@ -760,7 +765,7 @@ def send_welcome(message):
             f"👑 **प्रणाम मालिक ({message.from_user.first_name})!**\n\n"
             f"📊 वर्तमान लीडरबोर्ड टाइम: **{db_time}**\n"
             "⚙️ आप सीधे यहीं पर `/settime HH:MM` लिखकर टाइम बदल सकते हैं।\n"
-            "🏆 तुरंत रिज़ल्ट भेजने और स्कोर रीसेट करने के लिए `/sendresult` लिखें।\n"
+            "🏆 तुरंत रिज़ल्ट भेजने Henderson स्कोर रीसेट करने के लिए `/sendresult` लिखें।\n"
             "📢 किसी भी मैसेज पर रिप्लाई करके `/broadcast` लिखने से वह सभी ग्रुप्स और यूज़र्स के पर्सनल इनबॉक्स में चला जाएगा।\n"
             "📊 बॉट का लाइव स्टैट्स देखने के लिए `/status` का उपयोग करें।\n\n"
             "बॉट को ग्रुप में जोड़ने के लिए नीचे दिए बटन का उपयोग करें।"
@@ -780,12 +785,20 @@ def send_welcome(message):
             "**3. Use the `/settings` command inside your group to configure everything.**\n\n"
             "For any help, simply type `/help` ."
         )
+        
     markup = InlineKeyboardMarkup()
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-    markup.add(InlineKeyboardButton(text="➕ Add Me To Your Group ➕", url=add_to_group_url))
+    
+    # [UPDATED] प्राइवेट चैट वाले बटन का बैकग्राउंड भी हरा (Green) किया गया है
+    markup.add(InlineKeyboardButton(
+        text="➕ Add Me To Your Group ➕", 
+        url=add_to_group_url,
+        style="success"
+    ))
+    
     try: bot.send_message(chat_id=message.chat.id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
     except Exception: pass
-                
+        
 
 # ℹ️ हेल्प कमांड (Strict Username Validation के साथ FIXED)
 @bot.message_handler(commands=['help'])
