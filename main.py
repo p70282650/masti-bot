@@ -237,17 +237,14 @@ def get_settings_markup(chat_id):
     markup = InlineKeyboardMarkup()
     lang_text = "🌐 भाषा: HINDI 🇮🇳" if lang == 'hindi' else "🌐 Lang: ENGLISH 🇬🇧"
     
-    # [UPDATED] मुख्य सेटिंग्स बटन्स को नीला (primary) किया गया
     btn_lang = InlineKeyboardButton(text=lang_text, callback_data=f"set_lang_{chat_id}", style="primary")
     btn_autodel = InlineKeyboardButton(text="🗑️ Auto-Delete Settings", callback_data=f"menu_autodel_{chat_id}", style="primary")
     
-    # [UPDATED] टाइम इंटरवल वाले बटन्स को हरा (success) किया गया
     btn_15m = InlineKeyboardButton(text="⏱️ 15 Min", callback_data=f"set_time_900_{chat_id}", style="success")
     btn_30m = InlineKeyboardButton(text="⏱️ 30 Min", callback_data=f"set_time_1800_{chat_id}", style="success")
     btn_45m = InlineKeyboardButton(text="⏱️ 45 Min", callback_data=f"set_time_2700_{chat_id}", style="success")
     btn_60m = InlineKeyboardButton(text="⏱️ 60 Min", callback_data=f"set_time_3600_{chat_id}", style="success")
     
-    # [UPDATED] क्लोज बटन को लाल (danger) किया गया
     btn_close = InlineKeyboardButton(text="Close ❌", callback_data=f"panel_close_{chat_id}", style="danger")
     
     markup.row(btn_lang)
@@ -257,7 +254,6 @@ def get_settings_markup(chat_id):
     markup.row(btn_close)
     return text, markup
 
-# 🗑️ ऑटो-डिलीट सेटिंग्स का सब-मेनू जेनरेटर
 def get_autodelete_markup(chat_id):
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
@@ -276,7 +272,6 @@ def get_autodelete_markup(chat_id):
     )
     markup = InlineKeyboardMarkup()
     
-    # [UPDATED] Turn On को हरा, Turn Off को लाल और Back को लाल स्टाइल दी गई
     btn_on = InlineKeyboardButton(text="Turn On ✅", callback_data=f"autodel_on_{chat_id}", style="success")
     btn_off = InlineKeyboardButton(text="Turn Off 📴", callback_data=f"autodel_off_{chat_id}", style="danger")
     btn_back = InlineKeyboardButton(text="Back 🔙", callback_data=f"autodel_back_{chat_id}", style="danger")
@@ -290,10 +285,8 @@ def group_settings(message):
     chat_type = message.chat.type
 
     if chat_type == 'private':
-        try:
-            bot.reply_to(message, "❌ This command can only be used in groups.")
-        except Exception:
-            pass
+        try: bot.reply_to(message, "❌ This command can only be used in groups.")
+        except Exception: pass
         return  
 
     if not is_user_admin(message.chat.id, message.from_user.id):
@@ -301,11 +294,33 @@ def group_settings(message):
         except Exception: pass
         return
         
+    # 🔍 [ANTI-SPAM LOGIC] डेटाबेस से पुराना सेटिंग्स मैसेज आईडी ढूँढना और उसे डिलीट करना
+    with sqlite3.connect(DB_FILE, timeout=20) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT settings_msg_id FROM groups WHERE chat_id = ?", (message.chat.id,))
+        row = cursor.fetchone()
+        old_msg_id = row[0] if row and row[0] else 0
+
+    if old_msg_id > 0:
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=old_msg_id)
+        except Exception:
+            pass  # अगर पुराना मैसेज पहले ही कोई डिलीट कर चुका है तो एरर स्किप करें
+
     text, markup = get_settings_markup(message.chat.id)
     if text: 
-        try: bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
-        except Exception: pass
-
+        try: 
+            # नया सेटिंग्स मैसेज भेजना
+            new_msg = bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+            
+            # 📌 [SAVE NEW ID] नए मैसेज की आईडी को डेटाबेस में सेव करना ताकि अगली बार इसे डिलीट किया जा सके
+            with sqlite3.connect(DB_FILE, timeout=20) as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE groups SET settings_msg_id = ? WHERE chat_id = ?", (new_msg.message_id, message.chat.id))
+                conn.commit()
+        except Exception: 
+            pass
+  
 # 🔄 सेटिंग्स बटन प्रोसेसर (मल्टी-इंडेक्स आर्किटेक्चर फिक्स्ड)
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('set_lang_', 'set_time_', 'menu_autodel_', 'autodel_', 'panel_close_')))
 def handle_settings_callbacks(call):
