@@ -473,16 +473,30 @@ def handle_owner_broadcast(message):
     g_success, g_fail = 0, 0
     u_success, u_fail = 0, 0
 
+    # 📌 ग्रुप्स में ब्रॉडकास्ट (बटन्स के साथ)
     for (chat_id,) in all_chats:
         try:
-            bot.copy_message(chat_id=chat_id, from_chat_id=message.chat.id, message_id=target_msg.message_id)
+            # [FIXED] reply_markup=target_msg.reply_markup जोड़ दिया ताकि बटन्स भी कॉपी होकर जाएँ
+            bot.copy_message(
+                chat_id=chat_id, 
+                from_chat_id=message.chat.id, 
+                message_id=target_msg.message_id,
+                reply_markup=target_msg.reply_markup
+            )
             g_success += 1
             time.sleep(0.15)  
         except Exception: g_fail += 1
 
+    # 📌 प्राइवेट यूज़र्स में ब्रॉडकास्ट (बटन्स के साथ)
     for (user_id,) in all_users:
         try:
-            bot.copy_message(chat_id=user_id, from_chat_id=message.chat.id, message_id=target_msg.message_id)
+            # [FIXED] यहाँ भी बटन्स को यूज़र्स के पर्सनल इनबॉक्स में भेजने के लिए reply_markup जोड़ा
+            bot.copy_message(
+                chat_id=user_id, 
+                from_chat_id=message.chat.id, 
+                message_id=target_msg.message_id,
+                reply_markup=target_msg.reply_markup
+            )
             u_success += 1
             time.sleep(0.15)  
         except Exception: u_fail += 1
