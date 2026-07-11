@@ -849,31 +849,130 @@ def send_help(message):
     except Exception: pass
 
 # 📊 लाइव स्टेटस कमांड (Strict Group & Owner Security Added)
+# एक बार में कितने ग्रुप दिखाने हैं
+GROUPS_PER_PAGE = 10
+
 @bot.message_handler(commands=['status'])
 def send_stats(message):
     is_owner = (OWNER_ID and message.from_user.id == OWNER_ID)
     is_valid_chat = (message.chat.type == 'private' or (SUPPORT_GROUP_ID and message.chat.id == SUPPORT_GROUP_ID))
 
-    if is_owner and is_valid_chat:
-        with sqlite3.connect(DB_FILE, timeout=20) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM groups")
-            res_g = cursor.fetchone()
-            g_count = res_g[0] if res_g else 0
-            
-            cursor.execute("SELECT COUNT(*) FROM users")
-            res_u = cursor.fetchone()
-            u_count = res_u[0] if res_u else 0
-            
-        bot.send_message(
-            message.chat.id, 
-            f"📊 **Bot live status:**\n\n"
-            f"🎯 Total Active Groups: **{g_count}**\n"
-            f"👤 Total Active Users: **{u_count}**"
-        )
-    else:
+    if not (is_owner and is_valid_chat):
         try: bot.send_message(message.chat.id, "❌ This command is only valid for the bot owner and in authorized chats.")
         except Exception: pass
+        return
+
+    # पहले पेज (Page 0) का डेटा जनरेट करके भेजेंगे
+    text, markup = generate_status_page(page=0)
+    try:
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception as e:
+        print(f"स्टेट्स भेजने में एरर: {e}")
+
+# 📊 पेज के हिसाब से ग्रुप लिस्ट और बटन्स बनाने वाला हेल्पर फ़ंक्शन
+def generate_status_page(page=0):
+    with sqlite3.connect(DB_FILE, timeout=20) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT chat_id FROM groups")
+        all_chats = cursor.fetchall()
+        
+        cursor.execute("SELECT COUNT(*) FROM users")
+        res_u = cursor.fetchone()
+        u_count = res_u[0] if res_u else 0
+
+    g_count = len(all_chats)
+    
+    # कैलकुलेट करें कि इस पेज पर कौन से 10 ग्रुप दिखाने हैं
+    start_idx = page * GROUPS_PER_PAGE
+    end_idx = start_idx + GROUPS_PER_PAGE
+    current_page_groups = all_chats[start_idx:end_idx]
+    
+    # कुल कितने पेज बनेंगे (पायथन मैथ)
+    total_pages = (g_count + GROUPS_PER_PAGE - 1) // GROUPS_PER_PAGE
+    if total_pages == 0: total_pages = 1
+
+    stats_text = (
+        f"📊 **Bot Live Status & Statistics**\n"
+        f"---------------------------------------\n"
+        f"🎯 Total Active Groups: **{g_count}**\n"
+        f"👤 Total Active Users: **{u_count}**\n"
+        f"📖 Page: **{page + 1} / {total_pages}**\n"
+        f"---------------------------------------\n\n"
+        f" castle **Active Groups List (10 per page):**\n\n"
+    )
+
+    if current_page_groups:
+        # सही नंबरिंग दिखाने के लिए start_idx + 1 से शुरू करेंगे
+        for idx, (chat_id,) in enumerate(current_page_groups, start_idx + 1):
+            try:
+                chat_info = bot.get_chat(chat_id)
+                group_name = chat_info.title
+                
+                try:
+                    invite_link = bot.export_chat_invite_link(chat_id)
+                    link_text = f"[Click to Join]({invite_link})"
+                except Exception:
+                    if chat_info.username:
+                        link_text = f"[Click to Join](https://t.me{chat_info.username})"
+                    else:
+                        link_text = "⚠️ No Admin (No Link)"
+                
+                stats_text += f"{idx}. **{group_name}**\n🆔 ` {chat_id} `\n🔗 {link_text}\n"
+                stats_text += f"---------------------------------------\n"
+            except Exception:
+                stats_text += f"{idx}. 🛑 **Unknown/Left Group**\n🆔 ` {chat_id} `\n---------------------------------------\n"
+    else:
+        stats_text += "⚠️ No groups found on this page.\n"
+
+    # 🕹️ पेजिनेशन बटन्स (Navigation Buttons) बनाना
+    markup = InlineKeyboardMarkup()
+    buttons_row = []
+
+    # अगर पहला पेज नहीं है, तो 'Back' बटन दिखाओ
+    if page > 0:
+        buttons_row.append(InlineKeyboardButton(text="◀️ Previous", callback_data=f"statpage_{page-1}", style="primary"))
+    
+    # अगर आगे और ग्रुप्स बचे हैं, तो 'Next' बटन दिखाओ
+    if end_idx < g_count:
+        buttons_row.append(InlineKeyboardButton(text="Next ▶️", callback_data=f"statpage_{page+1}", style="primary"))
+
+    if buttons_row:
+        markup.row(*buttons_row)
+        
+    # एक क्लोज बटन भी दे देते हैं
+    markup.row(InlineKeyboardButton(text="Close ❌", callback_data="status_close", style="danger"))
+    
+    return stats_text, markup
+
+# 🔄 पेज बदलने और क्लोज करने का बटन हैंडलर
+@bot.callback_query_handler(func=lambda call: call.data.startswith("statpage_") or call.data == "status_close")
+def handle_status_pagination(call):
+    # सिर्फ बॉट ओनर ही बटन दबा सकता है
+    if not (OWNER_ID and call.from_user.id == OWNER_ID):
+        bot.answer_callback_query(call.id, text="❌ This menu is only for the bot owner.", show_alert=True)
+        return
+
+    if call.data == "status_close":
+        try:
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+        except Exception:
+            pass
+        return
+
+    # 'statpage_1' में से पेज नंबर (1) अलग निकालना
+    try:
+        target_page = int(call.data.split("_")[1])
+        
+        # टेलीग्राम को बताएं कि लोडिंग हो रही है
+        bot.answer_callback_query(call.id, text=f"Loading Page {target_page + 1}...")
+        
+        # नए पेज का डेटा जेनरेट करें
+        text, markup = generate_status_page(page=target_page)
+        
+        # पुराने मैसेज को नए पेज के डेटा से एडिट करें
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=text, reply_markup=markup, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception as e:
+        print(f"पेज बदलने में एरर: {e}")
             
 
 # 🤖 ग्रुप जॉइन/लीव ट्रैकर (सेम वेलकम मैसेज आर्किटेक्चर)
