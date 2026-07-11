@@ -109,6 +109,12 @@ def init_db():
         except sqlite3.OperationalError:
             pass 
             
+        # 🔍 [ANTI-SPAM MYSCORE DB] यूज़र का पिछला स्कोर कार्ड मैसेज आईडी सेव करने के लिए कॉलम
+        try:
+            cursor.execute("ALTER TABLE daily_scores ADD COLUMN last_score_msg_id INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass 
+            
         try:
             cursor.execute("ALTER TABLE poll_mapping ADD COLUMN creation_time REAL DEFAULT 0")
         except sqlite3.OperationalError:
@@ -727,39 +733,64 @@ def handle_poll_answer(poll_answer):
 def check_user_score(message):
     chat_type = message.chat.type
 
-    # 🚨 [UPDATED] अगर यूजर प्राइवेट चैट (DM) में कमांड डालता है
+    # 🚨 अगर यूजर प्राइवेट चैट (DM) में कमांड डालता है
     if chat_type == 'private':
-        try:
-            bot.reply_to(message, "❌ This command can only be used in groups.")
-        except Exception:
-            pass
-        return  # फंक्शन यहीं रुक जाएगा, स्कोर नहीं दिखेगा
+        try: bot.reply_to(message, "❌ This command can only be used in groups.")
+        except Exception: pass
+        return  
 
     user_id = message.from_user.id
     chat_id = message.chat.id
 
+    # 🗑️ [ANTI-SPAM 1] यूज़र द्वारा भेजे गए कमांड टेक्स्ट (/myscore) को तुरंत डिलीट करें
+    try: bot.delete_message(chat_id=chat_id, message_id=message.message_id)
+    except Exception: pass
+
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT correct_count, wrong_count FROM daily_scores WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+        # स्कोर के साथ-साथ यूज़र के पिछले स्कोर मैसेज की आईडी (last_score_msg_id) भी फ़ेच करें
+        cursor.execute("SELECT correct_count, wrong_count, last_score_msg_id FROM daily_scores WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
         res = cursor.fetchone()
     
     if res:
         correct = res[0]
         wrong = res[1]
+        old_score_msg_id = res[2] if res[2] else 0
         final_score = (correct * 2) - (wrong * 0.5)
     else:
-        correct, wrong, final_score = 0, 0, 0.0
+        correct, wrong, old_score_msg_id, final_score = 0, 0, 0, 0.0
+
+    # 🗑️ [ANTI-SPAM 2] अगर इस यूज़र का कोई पुराना स्कोर कार्ड ग्रुप में खुला है, तो उसे डिलीट करें
+    if old_score_msg_id > 0:
+        try: bot.delete_message(chat_id=chat_id, message_id=old_score_msg_id)
+        except Exception: pass
+
+    # स्कोर फ़ॉर्मेट (.0 हटाने के लिए)
+    display_score = f"{final_score:.1f}" if final_score % 0.5 != 0 else f"{int(final_score)}"
+
+    score_text = (
+        f"🎉 **Congratulations {message.from_user.first_name}**, your today's quiz score!\n\n"
+        f"✅ Correct Ans: **{correct}** (+{correct * 2} point)\n"
+        f"❌ Wrong Ans: **{wrong}** (-{wrong * 0.5} point)\n"
+        f"🔥 **Final Score: {display_score} point**\n\n"
+        f"ℹ️ Note: This score will be reset after the leaderboard is published.\n"
+        f"⭐ If you don't want to wait for the results, you can use the `/myscore` command at any time."
+    )
 
     try: 
-        score_text = (
-            f"🎉 **congratulations {message.from_user.first_name}**, your today's quiz score!\n\n"
-            f"✅ Correct Ans: **{correct}** (+{correct * 2} point)\n"
-            f"❌ Wrong Ans: **{wrong}** (-{wrong * 0.5} point)\n"
-            f"🔥 **Final Score: {final_score} point**\n\n"
-            f"ℹ️ Note: This score will be reset after the leaderboard is published.\n"
-            f"⭐ If you don't want to wait for the results, you can use the `/myscore` command at any time."
-        )
-        bot.reply_to(message, score_text, parse_mode="Markdown")
+        # नया स्कोर कार्ड भेजें (चूँकि पुराना डिलीट हो चुका है, इसलिए reply_to के बजाय सीधे send_message करेंगे)
+        new_score_msg = bot.send_message(chat_id=chat_id, text=score_text, parse_mode="Markdown")
+        
+        # 📌 [SAVE NEW ID] नए स्कोर कार्ड की आईडी को डेटाबेस में इस यूज़र के डेटा के साथ अपडेट करें
+        with sqlite3.connect(DB_FILE, timeout=20) as conn:
+            cursor = conn.cursor()
+            # सुनिश्चित करें कि यूज़र की एंट्री डेटाबेस में मौजूद हो, फिर अपडेट करें
+            cursor.execute("""
+                INSERT INTO daily_scores (chat_id, user_id, user_name, correct_count, wrong_count, last_score_msg_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET last_score_msg_id = excluded.last_score_msg_id
+            """, (chat_id, user_id, message.from_user.first_name, correct, wrong, new_score_msg.message_id))
+            conn.commit()
     except Exception: 
         pass
 
