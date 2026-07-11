@@ -849,7 +849,6 @@ def send_help(message):
     except Exception: pass
 
 # 📊 लाइव स्टेटस कमांड (Strict Group & Owner Security Added)
-# एक बार में कितने ग्रुप दिखाने हैं
 GROUPS_PER_PAGE = 10
 
 @bot.message_handler(commands=['status'])
@@ -862,14 +861,17 @@ def send_stats(message):
         except Exception: pass
         return
 
-    # पहले पेज (Page 0) का डेटा जनरेट करके भेजेंगे
+    # [UPDATED] शुरुआत में ही एक लोडिंग मैसेज भेजेंगे ताकि यूज़र को लगे कि बॉट एक्टिव है
+    status_msg = bot.send_message(message.chat.id, "⏳ **Fetching statistics and group data... Please wait...**", parse_mode="Markdown")
+    
+    # डेटा लोड करके पुराने मैसेज को एडिट कर देंगे
     text, markup = generate_status_page(page=0)
     try:
-        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown", disable_web_page_preview=True)
-    except Exception as e:
-        print(f"स्टेट्स भेजने में एरर: {e}")
+        bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=text, reply_markup=markup, parse_mode="Markdown", disable_web_page_preview=True)
+    except Exception:
+        try: bot.send_message(message.chat.id, text=text, reply_markup=markup, parse_mode="Markdown", disable_web_page_preview=True)
+        except Exception: pass
 
-# 📊 पेज के हिसाब से ग्रुप लिस्ट और बटन्स बनाने वाला हेल्पर फ़ंक्शन
 def generate_status_page(page=0):
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
@@ -881,13 +883,10 @@ def generate_status_page(page=0):
         u_count = res_u[0] if res_u else 0
 
     g_count = len(all_chats)
-    
-    # कैलकुलेट करें कि इस पेज पर कौन से 10 ग्रुप दिखाने हैं
     start_idx = page * GROUPS_PER_PAGE
     end_idx = start_idx + GROUPS_PER_PAGE
     current_page_groups = all_chats[start_idx:end_idx]
     
-    # कुल कितने पेज बनेंगे (पायथन मैथ)
     total_pages = (g_count + GROUPS_PER_PAGE - 1) // GROUPS_PER_PAGE
     if total_pages == 0: total_pages = 1
 
@@ -898,11 +897,10 @@ def generate_status_page(page=0):
         f"👤 Total Active Users: **{u_count}**\n"
         f"📖 Page: **{page + 1} / {total_pages}**\n"
         f"---------------------------------------\n\n"
-        f" castle **Active Groups List (10 per page):**\n\n"
+        f"🏰 **Active Groups List:**\n\n"
     )
 
     if current_page_groups:
-        # सही नंबरिंग दिखाने के लिए start_idx + 1 से शुरू करेंगे
         for idx, (chat_id,) in enumerate(current_page_groups, start_idx + 1):
             try:
                 chat_info = bot.get_chat(chat_id)
@@ -924,24 +922,18 @@ def generate_status_page(page=0):
     else:
         stats_text += "⚠️ No groups found on this page.\n"
 
-    # 🕹️ पेजिनेशन बटन्स (Navigation Buttons) बनाना
     markup = InlineKeyboardMarkup()
     buttons_row = []
 
-    # अगर पहला पेज नहीं है, तो 'Back' बटन दिखाओ
     if page > 0:
         buttons_row.append(InlineKeyboardButton(text="◀️ Previous", callback_data=f"statpage_{page-1}", style="primary"))
-    
-    # अगर आगे और ग्रुप्स बचे हैं, तो 'Next' बटन दिखाओ
     if end_idx < g_count:
         buttons_row.append(InlineKeyboardButton(text="Next ▶️", callback_data=f"statpage_{page+1}", style="primary"))
 
     if buttons_row:
         markup.row(*buttons_row)
         
-    # एक क्लोज बटन भी दे देते हैं
     markup.row(InlineKeyboardButton(text="Close ❌", callback_data="status_close", style="danger"))
-    
     return stats_text, markup
 
 # 🔄 पेज बदलने और क्लोज करने का बटन हैंडलर
