@@ -335,9 +335,16 @@ def handle_settings_callbacks(call):
         bot.answer_callback_query(call.id, "❌ You do not have admin permissions!", show_alert=True)
         return
 
+    # 🛑 [UPDATED] क्लोज बटन दबाने पर डेटाबेस से आईडी साफ़ करना और मैसेज डिलीट करना
     if action == "panel" and sub_action == "close":
-        try: bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
-        except Exception: pass
+        with sqlite3.connect(DB_FILE, timeout=20) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE groups SET settings_msg_id = 0 WHERE chat_id = ?", (chat_id,))
+            conn.commit()
+        try: 
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+        except Exception: 
+            pass
         return
 
     show_main_menu = True
@@ -376,11 +383,16 @@ def handle_settings_callbacks(call):
                 
         conn.commit()
         
-    if show_main_menu: text, markup = get_settings_markup(chat_id)
-    else: text, markup = get_autodelete_markup(chat_id)
+    if show_main_menu: 
+        text, markup = get_settings_markup(chat_id)
+    else: 
+        text, markup = get_autodelete_markup(chat_id)
         
-    try: bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=text, reply_markup=markup, parse_mode="Markdown")
-    except Exception: pass
+    try: 
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=text, reply_markup=markup, parse_mode="Markdown")
+    except Exception: 
+        pass
+            
 
 # 👑 ओनर कमांड - टाइम सेट करना (Strict Group & Owner Security Added)
 @bot.message_handler(commands=['settime'])
