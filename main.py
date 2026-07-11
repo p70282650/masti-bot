@@ -823,7 +823,6 @@ def send_help(message):
     message_text = message.text.strip() if message.text else ""
     
     # 🚨 [CRITICAL FIX] चेक करें कि क्या कमांड सिर्फ इसी बॉट के लिए है?
-    # अगर ग्रुप में कोई दूसरा बॉट ट्रिगर हुआ है (जैसे /help@OtherBot), तो यह फ़ंक्शन यहीं रुक जाएगा!
     if chat_type in ['group', 'supergroup']:
         expected_full_command = f"/help@{BOT_USERNAME}"
         if "@" in message_text and not message_text.startswith(expected_full_command):
@@ -843,10 +842,17 @@ def send_help(message):
         "🔐 `/settings` - Open the configuration panel (Group Admins only)."
     )
     markup = InlineKeyboardMarkup()
-    owner_url = "https://t.me/comeback_009"
-    markup.add(InlineKeyboardButton(text="Contact Support", url=owner_url))
-    try: bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
-    except Exception: pass
+    
+    # 👑 [AUTOMATED] .env से लोडेड OWNER_ID का उपयोग करके ऑटोमैटिक परमानेंट लिंक बनाया
+    owner_url = f"tg://user?id={int(OWNER_ID)}"
+    
+    # बटन में लिंक पास किया और आकर्षक लुक के लिए इमोजी जोड़े
+    markup.add(InlineKeyboardButton(text="💬 Contact Support 🚀", url=owner_url))
+    
+    try: 
+        bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
+    except Exception: 
+        pass
 
 # 📊 लाइव स्टेटस कमांड (Strict Group & Owner Security Added)
 GROUPS_PER_PAGE = 10
