@@ -518,7 +518,7 @@ def manual_leaderboard_sender(message):
     
     # [UPDATED] बटन में style="success" जोड़ दिया है, जिससे यह हरे रंग (Green) का दिखेगा
     markup.add(InlineKeyboardButton(
-        text="Add Me To Your Group", 
+        text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", 
         url=add_to_group_url,
         style="success"
     ))
@@ -586,7 +586,7 @@ def daily_leaderboard_scheduler():
     
     # [UPDATED] बटन को आकर्षक हरे रंग (Green) का बनाने के लिए style="success" जोड़ा
     markup.add(InlineKeyboardButton(
-        text="Add Me To Your Group", 
+        text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", 
         url=add_to_group_url,
         style="success"
     ))
@@ -845,7 +845,7 @@ def send_welcome(message):
         add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
         
         group_markup.add(InlineKeyboardButton(
-            text="➕ Add Me To Your Group ➕", 
+            text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", 
             url=add_to_group_url,
             style="success"
         ))
@@ -905,7 +905,7 @@ def send_welcome(message):
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
     
     markup.add(InlineKeyboardButton(
-        text="➕ Add Me To Your Group ➕", 
+        text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", 
         url=add_to_group_url,
         style="success"
     ))
