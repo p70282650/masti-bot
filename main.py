@@ -885,6 +885,22 @@ def send_help(message):
         if "@" in message_text and not message_text.startswith(expected_full_command):
             return  # ❌ दूसरे बॉट की कमांड है, मेरा बॉट शांत रहेगा
 
+    # 📌 Group Chat Logic (With Anti-Spam Auto-Delete)
+    if chat_type in ['group', 'supergroup']:
+        # 🔍 डेटाबेस से पुराने /help मैसेज की आईडी निकालना
+        with sqlite3.connect(DB_FILE, timeout=20) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT help_msg_id FROM groups WHERE chat_id = ?", (message.chat.id,))
+            row = cursor.fetchone()
+            old_help_id = row[0] if row and row[0] else 0
+
+        # अगर पुराना मैसेज मौजूद है, तो उसे चैट से साफ़ (Delete) करें
+        if old_help_id > 0:
+            try: 
+                bot.delete_message(chat_id=message.chat.id, message_id=old_help_id)
+            except Exception: 
+                pass
+
     help_text = (
         "⚡ **Help & Guide - Daily Poll Bot:**\n\n"
         "Here is a quick guide on how to configure and use the bot in your group:\n\n"
@@ -907,9 +923,18 @@ def send_help(message):
     markup.add(InlineKeyboardButton(text="💬 Contact Support", url=owner_url))
     
     try: 
-        bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
+        # नया मैसेज भेजना
+        new_help_msg = bot.send_message(chat_id=message.chat.id, text=help_text, reply_markup=markup, parse_mode="Markdown")
+        
+        # 📌 [SAVE NEW ID] नए हेल्प मैसेज की आईडी को डेटाबेस में अपडेट करें (सिर्फ ग्रुप्स के लिए)
+        if chat_type in ['group', 'supergroup']:
+            with sqlite3.connect(DB_FILE, timeout=20) as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE groups SET help_msg_id = ? WHERE chat_id = ?", (new_help_msg.message_id, message.chat.id))
+                conn.commit()
     except Exception: 
         pass
+        
 
 # 📊 लाइव स्टेटस कमांड (Strict Group & Owner Security Added)
 GROUPS_PER_PAGE = 10
