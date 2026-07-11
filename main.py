@@ -769,8 +769,22 @@ def send_welcome(message):
     full_name = f"{first_name} {last_name}".strip()
     if not full_name: full_name = f"User_{user_id}"
 
-    # 📌 Group Chat Logic
+    # 📌 Group Chat Logic (With Anti-Spam Auto-Delete)
     if chat_type in ['group', 'supergroup']:
+        # 🔍 डेटाबेस से पुराने /start मैसेज की आईडी निकालना
+        with sqlite3.connect(DB_FILE, timeout=20) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT start_msg_id FROM groups WHERE chat_id = ?", (message.chat.id,))
+            row = cursor.fetchone()
+            old_start_id = row[0] if row and row[0] else 0
+
+        # अगर पुराना मैसेज मौजूद है, तो उसे चैट से साफ़ (Delete) करें
+        if old_start_id > 0:
+            try: 
+                bot.delete_message(chat_id=message.chat.id, message_id=old_start_id)
+            except Exception: 
+                pass
+
         group_text = (
             f"🎉 **Bot activated successfully!**\n"
             f"📢 Automated quizzes have been activated for this group.\n\n"
@@ -787,18 +801,26 @@ def send_welcome(message):
         group_markup = InlineKeyboardMarkup()
         add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
         
-        # [UPDATED] ग्रुप वाले बटन का बैकग्राउंड हरा (Green) किया गया है
         group_markup.add(InlineKeyboardButton(
             text="➕ Add Me To Your Group ➕", 
             url=add_to_group_url,
             style="success"
         ))
         
-        try: bot.send_message(chat_id=message.chat.id, text=group_text, reply_markup=group_markup, parse_mode="Markdown")
-        except Exception: pass
+        try: 
+            # नया मैसेज भेजना
+            new_msg = bot.send_message(chat_id=message.chat.id, text=group_text, reply_markup=group_markup, parse_mode="Markdown")
+            
+            # 📌 [SAVE NEW ID] नए मैसेज की आईडी डेटाबेस में सेव करें
+            with sqlite3.connect(DB_FILE, timeout=20) as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE groups SET start_msg_id = ? WHERE chat_id = ?", (new_msg.message_id, message.chat.id))
+                conn.commit()
+        except Exception: 
+            pass
         return  
 
-    # Private Chat Logic
+    # Private Chat Logic (यह पहले जैसा ही रहेगा, इसमें डिलीट करने की जरूरत नहीं है)
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO users (user_id, user_name, join_time) VALUES (?, ?, ?)", (user_id, full_name, time.time()))
@@ -809,13 +831,13 @@ def send_welcome(message):
             cursor = conn.cursor()
             cursor.execute("SELECT value FROM bot_settings WHERE key = 'leaderboard_time'")
             res = cursor.fetchone()
-            db_time = res if res else "22:00"
+            db_time = res[0] if res else "22:00"
             
         welcome_text = (
             f"👑 **प्रणाम मालिक ({message.from_user.first_name})!**\n\n"
             f"📊 वर्तमान लीडरबोर्ड टाइम: **{db_time}**\n"
             "⚙️ आप सीधे यहीं पर `/settime HH:MM` लिखकर टाइम बदल सकते हैं।\n"
-            "🏆 तुरंत रिज़ल्ट भेजने Henderson स्कोर रीसेट करने के लिए `/sendresult` लिखें।\n"
+            "🏆 तुरंत रिज़ल्ट भेजने और स्कोर रीसेट करने के लिए `/sendresult` लिखें।\n"
             "📢 किसी भी मैसेज पर रिप्लाई करके `/broadcast` लिखने से वह सभी ग्रुप्स और यूज़र्स के पर्सनल इनबॉक्स में चला जाएगा।\n"
             "📊 बॉट का लाइव स्टैट्स देखने के लिए `/status` का उपयोग करें।\n\n"
             "बॉट को ग्रुप में जोड़ने के लिए नीचे दिए बटन का उपयोग करें।"
@@ -839,15 +861,17 @@ def send_welcome(message):
     markup = InlineKeyboardMarkup()
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
     
-    # [UPDATED] प्राइवेट चैट वाले बटन का बैकग्राउंड भी हरा (Green) किया गया है
     markup.add(InlineKeyboardButton(
         text="➕ Add Me To Your Group ➕", 
         url=add_to_group_url,
         style="success"
     ))
     
-    try: bot.send_message(chat_id=message.chat.id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
-    except Exception: pass
+    try: 
+        bot.send_message(chat_id=message.chat.id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
+    except Exception: 
+        pass
+        
         
 # ℹ️ हेल्प कमांड (Strict Username Validation के साथ FIXED)
 @bot.message_handler(commands=['help'])
