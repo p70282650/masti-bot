@@ -870,7 +870,7 @@ def send_welcome(message):
         )
         group_markup = InlineKeyboardMarkup()
         add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-        group_markup.add(InlineKeyboardButton(text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢɢʀᴏᴜᴘ", url=add_to_group_url, style="success"))
+        group_markup.add(InlineKeyboardButton(text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", url=add_to_group_url, style="success"))
         
         new_msg = None
         try: 
@@ -1191,7 +1191,7 @@ def handle_left_or_joined(message):
             
             # [UPDATED] style="primary" के साथ नीला बटन तैयार है
             group_markup.add(InlineKeyboardButton(
-                text="➕ Add Me To Your Group ➕", 
+                text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢɢʀᴏᴜᴘ", 
                 url=add_to_group_url,
                 style="primary"
             ))
