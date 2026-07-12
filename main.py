@@ -848,7 +848,8 @@ def send_welcome(message):
             cursor = conn.cursor()
             cursor.execute("SELECT start_msg_id FROM groups WHERE chat_id = ?", (message.chat.id,))
             row = cursor.fetchone()
-            old_start_id = row if row and row else 0
+            # [FIXED - CRASH PROOF] अगर रो मौजूद है (not None) तो ही इंडेक्स 0 निकालेगा, वरना 0 असाइन करेगा
+            old_start_id = row[0] if row is not None else 0
 
         if old_start_id > 0:
             try: bot.delete_message(chat_id=message.chat.id, message_id=old_start_id)
@@ -869,8 +870,9 @@ def send_welcome(message):
         )
         group_markup = InlineKeyboardMarkup()
         add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-        group_markup.add(InlineKeyboardButton(text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", url=add_to_group_url, style="success"))
+        group_markup.add(InlineKeyboardButton(text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢɢʀᴏᴜᴘ", url=add_to_group_url, style="success"))
         
+        new_msg = None
         try: 
             # अगर इमेज पाथ मिल गया है तो फोटो भेजें
             if selected_image_path:
@@ -885,17 +887,20 @@ def send_welcome(message):
             else:
                 # अगर फोल्डर खाली है या नहीं मिला तो सिर्फ टेक्स्ट भेजें
                 raise ValueError("No image found")
-                
-            with sqlite3.connect(DB_FILE, timeout=20) as conn:
-                cursor = conn.cursor()
-                cursor.execute("UPDATE groups SET start_msg_id = ? WHERE chat_id = ?", (new_msg.message_id, message.chat.id))
-                conn.commit()
         except Exception: 
             try:
                 new_msg = bot.send_message(chat_id=message.chat.id, text=group_text, reply_markup=group_markup, parse_mode="Markdown")
+            except Exception: pass
+
+        # [FIXED - DATABASE SAVE] नया मैसेज भेजने के बाद उसकी ID को सुरक्षित रूप से स्टोर करना
+        if new_msg:
+            try:
                 with sqlite3.connect(DB_FILE, timeout=20) as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE groups SET start_msg_id = ? WHERE chat_id = ?", (new_msg.message_id, message.chat.id))
+                    cursor.execute('''
+                        INSERT INTO groups (chat_id, start_msg_id) VALUES (?, ?)
+                        ON CONFLICT(chat_id) DO UPDATE SET start_msg_id = excluded.start_msg_id
+                    ''', (message.chat.id, new_msg.message_id))
                     conn.commit()
             except Exception: pass
         return  
@@ -911,7 +916,8 @@ def send_welcome(message):
             cursor = conn.cursor()
             cursor.execute("SELECT value FROM bot_settings WHERE key = 'leaderboard_time'")
             res = cursor.fetchone()
-            db_time = res if res else "22:00"
+            # [FIXED - TUPLE ERROR] डेटाबेस से साफ़ स्ट्रिंग निकालने के लिए res[0] किया
+            db_time = res[0] if res is not None else "22:00"
             
         welcome_text = (
             f"👑 **प्रणाम मालिक ({message.from_user.first_name})!**\n\n"
@@ -957,6 +963,7 @@ def send_welcome(message):
     except Exception: 
         try: bot.send_message(chat_id=message.chat.id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
         except Exception: pass
+                
         
 # ℹ️ हेल्प कमांड (Strict Username Validation के साथ FIXED)
 @bot.message_handler(commands=['help'])
