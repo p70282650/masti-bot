@@ -3,7 +3,8 @@ import time
 import sqlite3
 import threading
 from datetime import datetime
-import pytz  
+import pytz
+import random
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
@@ -826,21 +827,32 @@ def send_welcome(message):
     full_name = f"{first_name} {last_name}".strip()
     if not full_name: full_name = f"User_{user_id}"
 
-    # 📌 Group Chat Logic (With Anti-Spam Auto-Delete)
+    # 🖼️ [DYNAMIC LOGIC] 'images' फोल्डर से रैंडम फोटो चुनना
+    image_folder = "images"  # आपके फोल्डर का नाम
+    selected_image_path = None
+
+    try:
+        # चेक करें कि फोल्डर मौजूद है या नहीं और उसमें फाइल्स हैं या नहीं
+        if os.path.exists(image_folder) and os.path.isdir(image_folder):
+            # फोल्डर के अंदर की सभी फाइल्स की लिस्ट (केवल png, jpg, jpeg)
+            all_images = [f for f in os.listdir(image_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            if all_images:
+                # फोल्डर के रास्ते के साथ रैंडम इमेज का पाथ जोड़ें (जैसे: images/photo1.png)
+                selected_image_path = os.path.join(image_folder, random.choice(all_images))
+    except Exception as e:
+        print(f"इमेज फोल्डर रीड करने में एरर: {e}")
+
+    # 📌 Group Chat Logic
     if chat_type in ['group', 'supergroup']:
-        # 🔍 डेटाबेस से पुराने /start मैसेज की आईडी निकालना
         with sqlite3.connect(DB_FILE, timeout=20) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT start_msg_id FROM groups WHERE chat_id = ?", (message.chat.id,))
             row = cursor.fetchone()
-            old_start_id = row[0] if row and row[0] else 0
+            old_start_id = row if row and row else 0
 
-        # अगर पुराना मैसेज मौजूद है, तो उसे चैट से साफ़ (Delete) करें
         if old_start_id > 0:
-            try: 
-                bot.delete_message(chat_id=message.chat.id, message_id=old_start_id)
-            except Exception: 
-                pass
+            try: bot.delete_message(chat_id=message.chat.id, message_id=old_start_id)
+            except Exception: pass
 
         group_text = (
             f"🎉 **Bot activated successfully!**\n"
@@ -857,27 +869,38 @@ def send_welcome(message):
         )
         group_markup = InlineKeyboardMarkup()
         add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-        
-        group_markup.add(InlineKeyboardButton(
-            text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", 
-            url=add_to_group_url,
-            style="success"
-        ))
+        group_markup.add(InlineKeyboardButton(text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", url=add_to_group_url, style="success"))
         
         try: 
-            # नया मैसेज भेजना
-            new_msg = bot.send_message(chat_id=message.chat.id, text=group_text, reply_markup=group_markup, parse_mode="Markdown")
-            
-            # 📌 [SAVE NEW ID] नए मैसेज की आईडी डेटाबेस में सेव करें
+            # अगर इमेज पाथ मिल गया है तो फोटो भेजें
+            if selected_image_path:
+                with open(selected_image_path, "rb") as photo_file:
+                    new_msg = bot.send_photo(
+                        chat_id=message.chat.id, 
+                        photo=photo_file, 
+                        caption=group_text, 
+                        reply_markup=group_markup, 
+                        parse_mode="Markdown"
+                    )
+            else:
+                # अगर फोल्डर खाली है या नहीं मिला तो सिर्फ टेक्स्ट भेजें
+                raise ValueError("No image found")
+                
             with sqlite3.connect(DB_FILE, timeout=20) as conn:
                 cursor = conn.cursor()
                 cursor.execute("UPDATE groups SET start_msg_id = ? WHERE chat_id = ?", (new_msg.message_id, message.chat.id))
                 conn.commit()
         except Exception: 
-            pass
+            try:
+                new_msg = bot.send_message(chat_id=message.chat.id, text=group_text, reply_markup=group_markup, parse_mode="Markdown")
+                with sqlite3.connect(DB_FILE, timeout=20) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE groups SET start_msg_id = ? WHERE chat_id = ?", (new_msg.message_id, message.chat.id))
+                    conn.commit()
+            except Exception: pass
         return  
 
-    # Private Chat Logic (यह पहले जैसा ही रहेगा, इसमें डिलीट करने की जरूरत नहीं है)
+    # Private Chat Logic
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO users (user_id, user_name, join_time) VALUES (?, ?, ?)", (user_id, full_name, time.time()))
@@ -888,13 +911,13 @@ def send_welcome(message):
             cursor = conn.cursor()
             cursor.execute("SELECT value FROM bot_settings WHERE key = 'leaderboard_time'")
             res = cursor.fetchone()
-            db_time = res[0] if res else "22:00"
+            db_time = res if res else "22:00"
             
         welcome_text = (
             f"👑 **प्रणाम मालिक ({message.from_user.first_name})!**\n\n"
             f"📊 वर्तमान लीडरबोर्ड टाइम: **{db_time}**\n"
             "⚙️ आप सीधे यहीं पर `/settime HH:MM` लिखकर टाइम बदल सकते हैं।\n"
-            "🏆 तुरंत रिज़ल्ट भेजने और स्कोर रीसेट करने के लिए `/sendresult` लिखें।\n"
+            "🏆 तुरंत रिज़ल्ट भेजने and स्कोर रीसेट करने के लिए `/sendresult` लिखें।\n"
             "📢 किसी भी मैसेज पर रिप्लाई करके `/broadcast` लिखने से वह सभी ग्रुप्स और यूज़र्स के पर्सनल इनबॉक्स में चला जाएगा।\n"
             "📊 बॉट का लाइव स्टैट्स देखने के लिए `/status` का उपयोग करें।\n\n"
             "बॉट को ग्रुप में जोड़ने के लिए नीचे दिए बटन का उपयोग करें।"
@@ -917,18 +940,23 @@ def send_welcome(message):
         
     markup = InlineKeyboardMarkup()
     add_to_group_url = f"https://t.me/{BOT_USERNAME}?startgroup=true"
-    
-    markup.add(InlineKeyboardButton(
-        text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", 
-        url=add_to_group_url,
-        style="success"
-    ))
+    markup.add(InlineKeyboardButton(text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", url=add_to_group_url, style="success"))
     
     try: 
-        bot.send_message(chat_id=message.chat.id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
+        if selected_image_path:
+            with open(selected_image_path, "rb") as photo_file:
+                bot.send_photo(
+                    chat_id=message.chat.id, 
+                    photo=photo_file, 
+                    caption=welcome_text, 
+                    reply_markup=markup, 
+                    parse_mode="Markdown"
+                )
+        else:
+            bot.send_message(chat_id=message.chat.id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
     except Exception: 
-        pass
-        
+        try: bot.send_message(chat_id=message.chat.id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
+        except Exception: pass
         
 # ℹ️ हेल्प कमांड (Strict Username Validation के साथ FIXED)
 @bot.message_handler(commands=['help'])
