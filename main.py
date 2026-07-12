@@ -577,7 +577,8 @@ def manual_leaderboard_sender(message):
                 lb_text += "⚠️ No users participated in the quiz today.\n"
                 lb_text += f"---------------------------------------\n"
                 
-            lb_text += "\n🎯 Amazing effort! Get ready for a new quiz tomorrow! 🚀"
+            lb_text += "\n🎯 Amazing effort! Get ready for a new quiz tomorrow! 🚀\n"
+            lb_text += "\n⭐ If you don't want to wait for the results, you can use the ☞ `/myscore` command at any time."
             try: 
                 bot.send_message(chat_id=chat_id, text=lb_text, reply_markup=markup, parse_mode="Markdown")
                 success_count += 1
@@ -667,7 +668,8 @@ def daily_leaderboard_scheduler():
                             lb_text += "⚠️ No users participated in the quiz today.\n"
                             lb_text += f"---------------------------------------\n"
                             
-                        lb_text += "\n🎯 Amazing effort! Get ready for a new quiz tomorrow! 🚀"
+                        lb_text += "\n🎯 Amazing effort! Get ready for a new quiz tomorrow! 🚀\n"
+                        lb_text += "\n⭐ If you don't want to wait for the results, you can use the ☞ `/myscore` command at any time."
                         try: 
                             bot.send_message(chat_id=chat_id, text=lb_text, reply_markup=markup, parse_mode="Markdown")
                             time.sleep(0.15)
@@ -789,7 +791,8 @@ def check_user_score(message):
         f"❌ Wrong Ans: **{wrong}** (-{wrong * 0.5} point)\n"
         f"🔥 **Final Score: {display_score} point**\n\n"
         f"ℹ️ Note: This score will be reset after the leaderboard is published.\n"
-        f"⭐ If you don't want to wait for the results, you can use the ☞ `/myscore` command at any time."
+        f"⭐ If you don't want to wait for the results,\n"
+        f"you can use the ☞ `/myscore` command at any time."
     )
 
     try: 
