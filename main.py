@@ -789,7 +789,7 @@ def check_user_score(message):
         f"❌ Wrong Ans: **{wrong}** (-{wrong * 0.5} point)\n"
         f"🔥 **Final Score: {display_score} point**\n\n"
         f"ℹ️ Note: This score will be reset after the leaderboard is published.\n"
-        f"⭐ If you don't want to wait for the results, you can use the `/myscore` command at any time."
+        f"⭐ If you don't want to wait for the results, you can use the ☞ `/myscore` command at any time."
     )
 
     try: 
@@ -1191,7 +1191,7 @@ def handle_left_or_joined(message):
             
             # [UPDATED] style="primary" के साथ नीला बटन तैयार है
             group_markup.add(InlineKeyboardButton(
-                text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢɢʀᴏᴜᴘ", 
+                text="✨ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ", 
                 url=add_to_group_url,
                 style="primary"
             ))
